@@ -123,7 +123,7 @@ chile_regiones <- chile_regiones %>% mutate(color = ifelse(IncDec > 1,"darkblue"
 
 chile_regiones <- st_transform(chile_regiones, crs = "+proj=longlat +datum=WGS84")
 
-addResourcePath("static", "www")
+#addResourcePath("static", "www")
 
 
 
@@ -134,7 +134,7 @@ addResourcePath("static", "www")
 ui <- navbarPage(
   title = div(
     style = "display: flex; align-items: center; gap: 10px; color: #FFFFFF",
-    img(src="static/mop1.jpeg", style="height: 70px; width: auto;"),
+    img(src="mop1.jpeg", style="height: 70px; width: auto;"),
     h2("Ley de Presupuestos MOP 2025", style = "margin: 0; color: #FFFFFF"),
   ),
   
