@@ -1,7 +1,7 @@
 source("packages.R")
 source("CREACIONBASE.R")
 source("tablas.R")
-
+library(shinyalert)
 
 
 
@@ -89,10 +89,41 @@ tabla_servicios <- function(region, servicios_agrupados,n) {
 # CODIGO SHINY ------------------------------------------------------------
 
 mapa_comunas <- chilemapas::mapa_comunas
+
+mapa_comunas$codigo_comuna[1:206] <- substr(mapa_comunas$codigo_comuna[1:206], 2, nchar(mapa_comunas$codigo_comuna[1:206]))
+
+mapa_comunas <- mapa_comunas %>% 
+  mutate(RegionAB = case_when(
+    codigo_region == "01" ~ "TARAPACÁ",
+    codigo_region == "02" ~ "ANTOFAGASTA",
+    codigo_region == "03" ~ "ATACAMA",
+    codigo_region == "04" ~ "COQUIMBO",
+    codigo_region == "05" ~ "VALPARAÍSO",
+    codigo_region == "06" ~ "O'HIGGINS",
+    codigo_region == "07" ~ "MAULE",
+    codigo_region == "08" ~ "BIOBÍO",
+    codigo_region == "09" ~ "LA ARAUCANÍA",
+    codigo_region == "10" ~ "LOS LAGOS",
+    codigo_region == "11" ~ "AYSÉN",
+    codigo_region == "12" ~ "MAGALLANES",
+    codigo_region == "13" ~ "METROPOLITANA",
+    codigo_region == "14" ~ "LOS RÍOS",
+    codigo_region == "15" ~ "ARICA Y PARINACOTA",
+    codigo_region == "16" ~ "ÑUBLE"
+  )) 
+
+
+colnames(mapa_comunas)[colnames(mapa_comunas) == "codigo_comuna"] <- "Código"
+
+mapa_comunas <- st_as_sf(mapa_comunas)
+mapa_comunas <- st_transform(mapa_comunas, crs = "+proj=longlat +datum=WGS84")
+
+
+
+
 mapa_regiones <- mapa_comunas |> 
   group_by(codigo_region) |> 
   summarize(geometry = st_union(geometry))
-
 
 
 
@@ -123,7 +154,26 @@ chile_regiones <- chile_regiones %>% mutate(color = ifelse(IncDec > 1,"darkblue"
 
 chile_regiones <- st_transform(chile_regiones, crs = "+proj=longlat +datum=WGS84")
 
-#addResourcePath("static", "www")
+
+
+zip_file <- normalizePath("www.zip", mustWork = TRUE)
+extract_dir <- file.path(getwd(), "www")
+
+if (!dir.exists(extract_dir)) {
+  tryCatch({
+    unzip(zip_file, exdir = getwd())
+    message("www.zip extraído exitosamente en: ", extract_dir)
+  }, error = function(e) {
+    stop("Fallo al extraer www.zip: ", e$message)
+  })
+}
+
+if (dir.exists(extract_dir)) {
+  addResourcePath("static", extract_dir)
+} else {
+  stop("La carpeta www no existe después de la extracción")
+}
+
 
 
 
@@ -134,8 +184,8 @@ chile_regiones <- st_transform(chile_regiones, crs = "+proj=longlat +datum=WGS84
 ui <- navbarPage(
   title = div(
     style = "display: flex; align-items: center; gap: 10px; color: #FFFFFF",
-    img(src="mop1.jpeg", style="height: 70px; width: auto;"),
-    h2("Ley de Presupuestos MOP 2025", style = "margin: 0; color: #FFFFFF"),
+    img(src="static/mop1.jpeg", style="height: 70px; width: auto;"),
+    h4("Nómina de Respaldo de Ley de Presupuestos MOP 2025", style = "margin: 0; color: #FFFFFF"),
   ),
   
   theme = bs_theme(
@@ -185,8 +235,8 @@ ui <- navbarPage(
     "))
   ),
   
-  
-  tabPanel(title = tags$span("Información Nacional", style = "font-size: 18px;"),
+  useShinyalert(), 
+  tabPanel(title = tags$span("Información Nacional", style = "font-size: 16px;"),
            fluidPage(
              actionButton("mi_boton", label = "Información importante"),  
              br(), br(),
@@ -252,6 +302,13 @@ ui <- navbarPage(
       font-size: 16px !important; /* Tamaño de letra más pequeño */
       font-weight: bold !important; /* Texto en negrita */
       padding: 8px 12px !important; /* Espaciado interno */
+      }
+
+.info-btn {
+      border: none;
+      background: none;
+      color: #6c757d;
+      size: 3px;
     }
                             
     "))
@@ -263,17 +320,17 @@ ui <- navbarPage(
                             col_widths = c(4, 4, 4), 
                             
                             value_box(
-                              title = "Total inversión 2025",
-                              value = p("3.829.909.407.000"),
+                              title = "Total inversión 2025 ",
+                              value = p("3.829.909.407 ($MILES)"),
                               tags$small("Fuente: Departamento de Gestión Presupuestaria", style="font-size: 0.7rem;"),
                               theme = "primary",
                               width = "100%",
                               height = "100px"
                             ),
                             value_box(
-                              title = "Proyección Población 2025",
-                              "20.206.953 habitantes",
-                              tags$small("Fuente: Proyección de población, INE", style="font-size: 0.7rem;"),
+                              title = "Población Censal 2024",
+                              "18.480.432 habitantes",
+                              tags$small("Fuente: Resultados Censo 2024, INE", style="font-size: 0.7rem;"),
                               theme = "primary",
                               width = "100%",
                               height = "100px"
@@ -290,19 +347,33 @@ ui <- navbarPage(
                             
                             
                             card(
-                              card_header("Seleccione una región en el mapa y luego presione la pestaña 'Región seleccionada' para mayor información"),
+                              card_header("Seleccione una región en el mapa y luego presione la pestaña superior llamada '📌 Región seleccionada' para mayor información"),
                               leafletOutput("mapa", height = "330px")
                             ),
                             
                             card(
-                              card_header("Inversión a nivel nacional"),
+                              card_header(
+                                span("Inversión a nivel nacional"),
+                                actionButton(
+                                  "info_btn", 
+                                  "", 
+                                  icon = icon("info-circle"), 
+                                  class = "info-btn float-end"
+                                )
+                              ),
                               plotlyOutput("grafico_nacional"),
                               style = "width: 100%; height: 450px;",
-                              card_footer("Fuente: Departamento de Gestión Presupuestaria. Nota: La flecha (arriba/abajo) indica el cambio respecto al presupuesto 2024, con el factor de crecimiento o decrecimiento entre paréntesis.")
+                              card_footer("Fuente: Departamento de Gestión Presupuestaria")
                             ),
                             
                             card(
-                              card_header("Inversión por categoría del proyecto (arrastre o nuevo)"),
+                              card_header(span("Inversión por categoría del proyecto (arrastre o nuevo)"),
+                                          actionButton(
+                                            "info_regCatNac", 
+                                            "", 
+                                            icon = icon("info-circle"), 
+                                            class = "info-btn float-end"
+                                          )),
                               plotlyOutput("GrafRegCat"),
                               style = "width: 100%; height: 450px;",
                               card_footer("Fuente: Departamento de Gestión Presupuestaria. Nota: Los montos de inversión se encuentran en miles de pesos.")
@@ -326,11 +397,12 @@ ui <- navbarPage(
                               card_header("Inversión en nuevos proyectos pertenecientes al eje de Seguridad Hídrica"),
                               plotlyOutput("SHNAC"),
                               style = "width: 100%; height: 450px;",
-                              card_footer("Fuente: Departamento de Gestión Presupuestaria. Nota 1: La categorización fue realizada en función de la variable 'Programa Dipres'. 'Consumo Humano' está compuesta por: agua potable rural semi-concentrada y agua potable rural concentrada.'Riego' agrupa: grandes obras de riego, conservación de obras de riego, explotación de obras de riego y obras de riego. La categoría 'Estudios y otros' reune: estudio básico, \nestudio y otros. Finalmente, 'Gestión' abarca: construcción de redes de medición, planes estratégicos de recursos hídricos y ampliación de redes de medición. Nota 2: Los montos de inversión se encuentran en miles de pesos.")
+                              card_footer("Fuente: Departamento de Gestión Presupuestaria. Nota 1: La categorización fue realizada en función de la variable 'Programa Dipres'. 'Consumo Humano' está compuesta por: agua potable rural semi-concentrado, agua potable rural concentrado y agua potable rural disperso .'Riego' agrupa: grandes obras de riego, conservación de obras de riego, explotación de obras de riego y obras de riego. La categoría 'Estudios y otros' reune: estudio básico, \nestudio y otros. Finalmente, 'Gestión' abarca: construcción de redes de medición, planes estratégicos de recursos hídricos y ampliación de redes de medición. Nota 2: Los montos de inversión se encuentran en miles de pesos.")
                             ),
                             
                             card(
-                              card_header("Inversión por eje ministerial y por categoría del proyecto"),
+                              card_header(span("Inversión por eje ministerial y por categoría del proyecto"), actionButton("ejeCatNac", "",icon = icon("info-circle"), 
+                                                                                                                           class = "info-btn float-end")),
                               plotlyOutput("grafico_eje_nac", height = "100%", width = "100%"),
                               style = "width: 100%; height: 500px; overflow: hidden;",
                               card_footer("Fuente: Departamento de Gestión Presupuestaria. Nota: Los montos de inversión se encuentran en miles de pesos.")
@@ -366,7 +438,7 @@ ui <- navbarPage(
                           col_widths = c(4, 4, 4),  
                           
                           value_box(
-                            title = "Total inversión regional 2025",
+                            title = "Total inversión regional 2025 ($MILES)",
                             span(textOutput("inversion_text")),
                             tags$small("Fuente: Departamento de Gestión Presupuestaria", style="font-size: 0.7rem;"),
                             theme = "primary",
@@ -417,7 +489,7 @@ ui <- navbarPage(
                             card_header("Inversión 2025 en nuevos proyectos pertenecientes al eje de Seguridad Hídrica"),
                             plotlyOutput("grafico_aguas"),
                             style = "width: 100%; height: 460px;",
-                            card_footer("Fuente: Departamento de Gestión Presupuestaria. Nota 1: La categorización fue realizada en función de la variable 'Programa Dipres'. 'Consumo Humano' está compuesta por: agua potable rural semi-concentrada y agua potable rural concentrada.'Riego' agrupa: grandes obras de riego, conservación de obras de riego, explotación de obras de riego y obras de riego. La categoría 'Estudios y otros' reune: estudio básico, estudio y otros. Finalmente, 'Gestión' abarca: construcción de redes de medición, planes estratégicos de recursos hídricos y ampliación de redes de medición. Nota 2: Los montos de inversión se encuentran en miles de pesos.")
+                            card_footer("Fuente: Departamento de Gestión Presupuestaria. Nota 1: La categorización fue realizada en función de la variable 'Programa Dipres'. 'Consumo Humano' está compuesta por: agua potable rural semi-concentrado, agua potable rural concentrado y agua potable rural disperso.'Riego' agrupa: grandes obras de riego, conservación de obras de riego, explotación de obras de riego y obras de riego. La categoría 'Estudios y otros' reune: estudio básico, estudio y otros. Finalmente, 'Gestión' abarca: construcción de redes de medición, planes estratégicos de recursos hídricos y ampliación de redes de medición. Nota 2: Los montos de inversión se encuentran en miles de pesos.")
                           )
                         )
                ),
@@ -432,7 +504,17 @@ ui <- navbarPage(
                                      )
                                    )
                         )
-               )
+               ),
+               
+               tabPanel("Mapa Inversión Comunal",
+                        fluidPage( br(), br(),
+                                   col_widths = 12,  
+                                   card(
+                                     leafletOutput("mapa_comunal", height = "330px"),
+                                     card_footer("Fuente: Departamento de Gestión Presupuestaria y proyecciones poblacionales obtenidas desde el INE. 
+                                                 Nota 1: Los valores 'Por definir' corresponden a comunas que forman parte de proyectos intercomunales pero que no tienen un monto asociado. Nota 2: Los montos de Inversión se encuentran en miles de pesos.")
+                                   )
+                        ))
              )
            )
   )
@@ -445,7 +527,17 @@ server <- function(input, output, session) {
   
   region_seleccionada <- reactiveVal(NULL)
   
-  
+  shinyalert(
+    title = "Nómina de Respaldo de Ley de Presupuestos MOP 2025",
+    text = "Unidad de Gestión del Conocimiento y Tecnología",
+    type = "",
+    closeOnEsc = FALSE,
+    closeOnClickOutside = FALSE,
+    showConfirmButton = TRUE,
+    confirmButtonText = "Cerrar",
+    imageUrl = "static/mop1.jpeg"
+  )
+ 
   output$mapa <- renderLeaflet({
     leaflet(chile_regiones) %>%
       addProviderTiles("CartoDB.Positron") %>% 
@@ -482,9 +574,9 @@ server <- function(input, output, session) {
     showModal(modalDialog(
       title = "Metodología",
       tags$ul(
-        tags$li("La base de datos consolidada, se obtuvo a partir del cruce de diferentes bases de datos (CUT,PROYECTO DE LEY 2025, PROYECCIÓN DE POBLACIONES, POBLACIÓN CENSAL 2017  y POBREZA MULTIDIMENSIONAL)
+        tags$li("La base de datos consolidada, se obtuvo a partir del cruce de diferentes bases de datos (CUT, PROYECTO DE LEY 2025, PROYECCIÓN DE POBLACIONES, POBLACIÓN CENSAL 2024 y POBREZA MULTIDIMENSIONAL)
             con el fin de normalizarla, se realizó un proceso de transformación de la variable correspondiente a cada servicio MOP, por lo que a cada uno de estos se le asignó la abreviación oficial (ej: Dirección de Planeamiento - DP),
-             existen ervicios que tienen un porcentaje muy pequeño por lo que se recurrió a una agrupación en la categoría 'Otros', para mayor detalle de porcentajes y montos, se debe posar el cursor por sobre la categoría."),
+             existen servicios que tienen un porcentaje muy pequeño por lo que se recurrió a una agrupación en la categoría 'Otros', para mayor detalle de porcentajes y montos, se debe posar el cursor por sobre la categoría."),
         br(),
         tags$li("En la base de datos se encuentra la variable 'Programa dipres', que indica a cuál programa pertenecen los proyectos. Dada la relevancia del eje ministerial de 'Seguridad Hídrica', se exploraron los proyectos nuevos dentro de este eje. Por consiguiente, se filtra la base por proyectos nuevos que pertenezcan al eje de 'Seguridad Hídrica'.
              Se categorizaron las instancias en cuatro categorías: Riego, Gestión, Consumo humano y Estudios y otros.  La primera es 'Consumo Humano' que está \ncompuesta por los programas pertenecientes a: agua potable rural semi-concentrada y agua potable rural concentrada. \nLa segunda es 'Riego' que agrupa: grandes obras de riego, conservación de obras de riego, explotación de obras de riego \ny obras de riego. La categoría 'Estudios y otros' reune los siguientes programas asociados a la Dipres: estudio básico, \nestudio y otros. Finalmente, la categoría 'Gestión' abarca: construcción de redes de medición, planes estratégicos de \nrecursos hídricos y ampliación de redes de medición.")),
@@ -497,7 +589,7 @@ server <- function(input, output, session) {
         br(),
         tags$li("3. Estimación de pobreza, casen 2022. Recuperado a partir de: https://observatorio.ministeriodesarrollosocial.gob.cl/pobreza-comunal-2022"),
         br(),
-        tags$li("4. Censo 2017, INE. Recuperado a partir de: https://www.ine.gob.cl/estadisticas/sociales/censos-de-poblacion-y-vivienda/censo-de-poblacion-y-vivienda"),
+        tags$li("4. Censo 2024, INE. Recuperado a partir de: https://censo2024.ine.gob.cl/estadisticas/"),
         br(),
         tags$li("5. Departamento de Gestión Presupuestaria")
       ),
@@ -517,7 +609,7 @@ server <- function(input, output, session) {
   
   output$titulo_region <- renderUI({
     if (!is.null(region_seleccionada())) {
-      tags$span(paste(region_seleccionada()), style = "font-size: 20px;") 
+      tags$span(paste(region_seleccionada()), style = "font-size: 15px;") 
     } else {
       tags$span("Seleccione una región en el mapa")
     }
@@ -538,7 +630,7 @@ server <- function(input, output, session) {
                                                               ifelse(region_seleccionada() == "MAULE", paste("Estadísticas de la región del Maule"),
                                                                      ifelse(region_seleccionada() == "ÑUBLE", paste("Estadísticas de la región del Ñuble"),
                                                                             ifelse(region_seleccionada() == "BIOBÍO", paste("Estadísticas de la región del Biobío"),
-                                                                                   ifelse(region_seleccionada() == "ARAUCANÍA", paste("Estadísticas de la región de La Araucanía"),
+                                                                                   ifelse(region_seleccionada() == "LA ARAUCANÍA", paste("Estadísticas de la región de La Araucanía"),
                                                                                           ifelse(region_seleccionada() == "LOS RÍOS", paste("Estadísticas de la región de Los Ríos"),
                                                                                                  ifelse(region_seleccionada() == "LOS LAGOS", paste("Estadísticas de la región de Los Lagos"),
                                                                                                         ifelse(region_seleccionada() == "AYSÉN", paste("Estadísticas de la región de Aysén"),
@@ -549,10 +641,52 @@ server <- function(input, output, session) {
   })
   
   
+  observeEvent(input$info_btn, {
+    showModal(modalDialog(
+      title = "",
+      
+      tags$li(paste("El promedio de la inversión regional es de", format(mean(tab1$`Monto 2025`), big.mark = ".", decimal.mark = ",")), "($MILES)"),
+      tags$li("La región de Los Lagos presenta el mayor monto de inversión (403.446.777 $MILES) y un aumento de 2,44 veces con respecto a la inversión del año 2024."), 
+      tags$li("La región de Arica y Parinacota tiene el menor monto de inversión (110.889.854 $MILES) y disminuye su inversión -con respecto a 2024- en 0,53 veces.")
+      ,
+      easyClose = TRUE,
+      footer = modalButton("Cerrar")
+    ))
+  })
+  
+  
+  
+  observeEvent(input$info_regCatNac, {
+    showModal(modalDialog(
+      title = "",
+      
+      tags$li(paste("El promedio de la inversión regional en proyectos de arrastre es de", format(mean(tabREG_CAT$TotalCat[tabREG_CAT$Categoría == "Arrastre"]), big.mark = ".", decimal.mark = ",")), "($MILES)", "mientras que el promedio de inversión para los proyectos nuevos es de", format(mean(tabREG_CAT$TotalCat[tabREG_CAT$Categoría == "Nuevo"]), big.mark = ".", decimal.mark = ","), "($MILES)"),
+      tags$li("La región con mayor inversión en proyectos de arrastre es Los Lagos, con 358.565.751 ($MILES), seguida por la Región Metropolitana con 301.579.374 ($MILES) y La Araucanía con 258.061.184 ($MILES)."), 
+      tags$li("En términos generales, la inversión en todas las regiones -incluyendo los proyectos interregionales- está mayormente concentrada en la continuidad de proyectos previamente comenzados."),
+      easyClose = TRUE,
+      footer = modalButton("Cerrar")
+    ))
+  })
+  
+  
+  
+  observeEvent(input$ejeCatNac, {
+    showModal(modalDialog(
+      title = "",
+      
+      tags$li("El eje de 'Integración territorial, conectividad y movilidad' tiene el mayor porcentaje de inversión tanto en los proyectos de arrastre (65,61%) como los nuevos (10,74%), por lo que su representación en términos de inversión a nivel nacional, representa el 76,35%."),
+      tags$li("'Desarrollo Productivo, Social, Cultural y Científico' es el eje que acumula un menor porcentaje a nivel nacional, tanto en los proyectos de arrastre como en los nuevos."), 
+      tags$li("El eje de 'Seguridad Hídrica' es el segundo eje con mayor porcentaje de inversión a nivel nacional, sin embargo, con un porcentaje muy menor (12,37%) en comparación al eje de 'Integración territorial, conectividad y movilidad.'"),
+      easyClose = TRUE,
+      footer = modalButton("Cerrar")
+    ))
+  })
+  
+  
   output$inversion_text <- renderText({
     req(region_seleccionada())
     a <- tab1 |> filter(RegionAB == region_seleccionada()) |> pull(`Monto 2025`)
-    paste(format(a, big.mark = ".", decimal.mark = ","), "(miles de pesos)")
+    format(a, big.mark = ".", decimal.mark = ",")
   })
   
   output$poblacion_text <- renderText({
@@ -563,7 +697,7 @@ server <- function(input, output, session) {
   
   output$pobreza_text <- renderText({
     req(region_seleccionada())
-    a <- tab_resumen_nac |> filter(RegionAB == region_seleccionada()) |> pull(`Pobreza Multidimensional`)
+    a <- tab_resumen_nac |> mutate(`Pobreza Multidimensional` = replace_na(`Pobreza Multidimensional`, "12.472")) |> filter(RegionAB == region_seleccionada()) |> pull(`Pobreza Multidimensional`)
     paste(format(a, big.mark = ".", decimal.mark = ","), "personas")
   })
   
@@ -573,7 +707,188 @@ server <- function(input, output, session) {
   
   # Información Regional ----------------------------------------------------
   
-  
+  output$mapa_comunal <- renderLeaflet({
+    
+    req(region_seleccionada())
+    
+    
+    tab_resumen <- left_join(tab_poblacion(region_seleccionada()), tab_monto(region_seleccionada()), by = "NombreComuna") 
+    
+    if (region_seleccionada() == "METROPOLITANA") {
+      tab_resumen <- tab_resumen_RM %>%
+        mutate(
+          `Población 2024` = scales::comma(`Población 2024`, big.mark = ".", decimal.mark = ","),
+          `Población 2025` = scales::comma(`Población 2025`, big.mark = ".", decimal.mark = ","),
+          Monto2025 = as.numeric(Monto2025)
+        ) |> 
+        mutate(NombreComuna = case_when(
+          NombreComuna == "ALHUE" ~ "ALHUÉ",
+          NombreComuna == "CONCHALI" ~ "CONCHALÍ",
+          NombreComuna == "CURACAVI" ~ "CURACAVÍ",
+          NombreComuna == "ESTACION CENTRAL" ~ "ESTACIÓN CENTRAL",
+          NombreComuna == "MACUL" ~ "MACÚL",
+          NombreComuna == "MAIPU" ~ "MAIPÚ",
+          NombreComuna == "MARIA PINTO" ~ "MARÍA PINTO",
+          NombreComuna == "PEÑALOLEN" ~ "PEÑALOLÉN",
+          NombreComuna == "SAN JOAQUIN" ~ "SAN JOAQUÍN",
+          NombreComuna == "SAN JOSE DE MAIPO" ~ "SAN JOSÉ DE MAIPO",
+          NombreComuna == "SAN RAMON" ~ "SAN RAMÓN",
+          TRUE ~ NombreComuna
+        )) |> 
+        dplyr::rename(
+          `Crec/Decrec relativo de población 2024 al 2025 (%)` = `Crec/Decrec relativo de población 2024 al 2025`,
+          `Inversión` = `Monto2025`,
+          `Población 2025 (*)` = `Población 2025`,
+          `Comuna` = `NombreComuna`,
+          `Pobreza multidimensional (**)` = `Pobreza Multidimensional`,
+        )
+    } else if (region_seleccionada() == "BIOBÍO") {
+      tab_resumen <- tab_resumen_BIOBIO  |> 
+        mutate(
+          Monto2025 = if_else(NombreComuna == "PICA", NA_real_, Monto2025),
+          `Población 2024` = scales::comma(`Población 2024`, big.mark = ".", decimal.mark = ","),
+          `Población 2025` = scales::comma(`Población 2025`, big.mark = ".", decimal.mark = ","),
+          Monto2025 = as.numeric(Monto2025)
+        ) |> 
+        mutate(NombreComuna = case_when(
+          NombreComuna == "ALTO BIOBIO" ~ "ALTO BIOBÍO",
+          NombreComuna == "CONCEPCION" ~ "CONCEPCIÓN",
+          NombreComuna == "HUALPEN" ~ "HUALPÉN",
+          NombreComuna == "LOS ALAMOS" ~ "LOS ÁLAMOS",
+          NombreComuna == "LOS ANGELES" ~ "LOS ÁNGELES",
+          NombreComuna == "MULCHEN" ~ "MULCHÉN",
+          NombreComuna == "SANTA BARBARA" ~ "SANTA BÁRBARA",
+          NombreComuna == "TIRUA" ~ "TIRÚA",
+          NombreComuna == "TOME" ~ "TOMÉ",
+          TRUE ~ NombreComuna
+        )) |> 
+        dplyr::rename(
+          `Crec/Decrec relativo de población 2024 al 2025 (%)` = `Crec/Decrec relativo de población 2024 al 2025 (%)`,
+          `Inversión` = `Monto2025`,
+          `Población 2025 (*)` = `Población 2025`,
+          `Comuna` = `NombreComuna`,
+          `Pobreza multidimensional (**)` = `Pobreza Multidimensional`,
+        )
+    } else {
+      tab_resumen <- tab_resumen  |> 
+        mutate(
+          Monto2025 = if_else(NombreComuna == "PICA", NA_real_, Monto2025),
+          `Población 2024` = scales::comma(`Población 2024`, big.mark = ".", decimal.mark = ","),
+          `Población 2025` = scales::comma(`Población 2025`, big.mark = ".", decimal.mark = ","),
+          Monto2025 = as.numeric(Monto2025))  |> 
+        mutate(NombreComuna = case_when(NombreComuna == "MARIA ELENA" ~ "MARÍA ELENA", NombreComuna == "OLLAGUE" ~ "OLLAGÜE",
+                                        NombreComuna == "COPIAPO" ~ "COPIAPÓ", NombreComuna == "COMBARBALA" ~ "COMBARBALÁ", NombreComuna == "PAIGUANO" ~ "PAIHUANO", NombreComuna == "RIO HURTADO" ~ "RÍO HURTADO", 
+                                        NombreComuna == "CONCON" ~ "CONCÓN", NombreComuna == "JUAN FERNANDEZ" ~ "JUAN FERNÁNDEZ", NombreComuna == " OLMUE" ~ "OLMUÉ", NombreComuna == "PUCHUNCAVI" ~ "PUCHUNCAVÍ",
+                                        NombreComuna == "QUILPUE" ~ "QUILPUÉ", NombreComuna == "SANTA MARIA" ~ "SANTA MARÍA",
+                                        NombreComuna == "VALPARAISO" ~ "VALPARAÍSO", NombreComuna == "MACHALI" ~ "MACHALÍ",
+                                        NombreComuna == "CHEPICA" ~ "CHÉPICA",
+                                        NombreComuna == "REQUINOA" ~ "REQUÍNOA",NombreComuna == "COLBUN" ~ "COLBÚN",
+                                        NombreComuna == "CONSTITUCION" ~ "CONSTITUCIÓN",
+                                        NombreComuna == "CURICO" ~ "CURICÓ",
+                                        NombreComuna == "HUALAÑE" ~ "HUALAÑÉ",
+                                        NombreComuna == "LICANTEN" ~ "LICANTÉN",
+                                        NombreComuna == "LONGAVI" ~ "LONGAVÍ",
+                                        NombreComuna == "RIO CLARO" ~ "RÍO CLARO",
+                                        NombreComuna == "VICHUQUEN" ~ "VICHUQUÉN",NombreComuna == "CHILLAN" ~ "CHILLÁN",
+                                        NombreComuna == "CHILLAN VIEJO" ~ "CHILLÁN VIEJO",
+                                        NombreComuna == "QUILLON" ~ "QUILLÓN",
+                                        NombreComuna == "RANQUIL" ~ "RÁNQUIL",
+                                        NombreComuna == "SAN FABIAN" ~ "SAN FABIÁN",
+                                        NombreComuna == "SAN NICOLAS" ~ "SAN NICOLÁS",
+                                        NombreComuna == "ÑIQUEN" ~ "ÑIQUÉN",NombreComuna == "CURACAUTIN" ~ "CURACAUTÍN",
+                                        NombreComuna == "PITRUFQUEN" ~ "PITRUFQUÉN",
+                                        NombreComuna == "PUCON" ~ "PUCÓN",
+                                        NombreComuna == "PUREN" ~ "PURÉN",
+                                        NombreComuna == "TOLTEN" ~ "TOLTÉN",
+                                        NombreComuna == "TRAIGUEN" ~ "TRAIGUÉN",
+                                        NombreComuna == "VILCUN" ~ "VILCÚN",
+                                        NombreComuna == "LA UNION" ~ "LA UNIÓN",
+                                        NombreComuna == "MAFIL" ~ "MÁFIL",
+                                        NombreComuna == "RIO BUENO" ~ "RÍO BUENO",
+                                        NombreComuna == "ANCUD" ~ "ANCÚD",
+                                        NombreComuna == "CHAITEN" ~ "CHAITÉN",
+                                        NombreComuna == "CURACO DE VELEZ" ~ "CURACO DE VÉLEZ",
+                                        NombreComuna == "FUTALEUFU" ~ "FUTALEUFÚ",
+                                        NombreComuna == "HUALAIHUE" ~ "HUALAIHUÉ",
+                                        NombreComuna == "MAULLIN" ~ "MAULLÍN",
+                                        NombreComuna == "PUQUELDON" ~ "PUQUELDÓN",
+                                        NombreComuna == "QUEILEN" ~ "QUEILÉN",
+                                        NombreComuna == "QUELLON" ~ "QUELLÓN",
+                                        NombreComuna == "RIO NEGRO" ~ "RÍO NEGRO",NombreComuna == "AYSEN" ~ "AYSÉN",
+                                        NombreComuna == "RIO IBAÑEZ" ~ "RÍO IBAÑEZ",
+                                        NombreComuna == "ANTARTICA" ~ "ANTÁRTICA",
+                                        NombreComuna == "RIO VERDE" ~ "RÍO VERDE", TRUE ~ NombreComuna
+        )) |> 
+        
+        dplyr::rename(
+          `Crec/Decrec relativo de población 2024 al 2025 (%)` = `Crec/Decrec relativo de población 2024 al 2025`,
+          `Inversión` = `Monto2025`,
+          `Población 2025 (*)` = `Población 2025`,
+          `Comuna` = `NombreComuna`,
+          `Pobreza multidimensional (**)` = `Pobreza Multidimensional`,
+        )
+    }
+    
+    
+    
+    mapa <-  mapa_comunas |> 
+                       filter(RegionAB == region_seleccionada()) |> 
+                       left_join(tab_resumen, by = "Código") 
+    
+    
+    bins <- seq(
+      from = 0,
+      to = max(mapa$Inversión, na.rm = TRUE),
+      length.out = 7  
+    )
+    
+    
+    pal <- colorBin("YlOrRd", domain = mapa_comunas$Inversión, bins = bins)
+    
+    leaflet(mapa) |> 
+      addProviderTiles("CartoDB.Positron") |> 
+      addPolygons(
+        fillColor = ~pal(`Inversión`),
+        weight = 2,
+        opacity = 1,
+        color = "white",
+        dashArray = "3",
+        fillOpacity = 0.7,
+        highlightOptions = highlightOptions(
+          weight = 5,
+          color = "#666",
+          dashArray = "",
+          fillOpacity = 0.7,
+          bringToFront = TRUE),
+        layerId = ~Comuna,
+        label =  ~lapply(
+          paste(
+            "<div style='font-size: 14px; line-height: 1.5;'>",
+             Comuna, "<br/>",
+            "<b>Inversión:</b> $", ifelse(is.na(Inversión), "Por Definir", format(Inversión, big.mark = ".")), "<br/>",
+            "<b>Población 2025:</b> ", format(`Población 2025 (*)`, big.mark = "."),
+            "</div>"
+          ),
+          htmltools::HTML
+        ),
+        labelOptions = labelOptions(
+          style = list("font-weight" = "normal", padding = "3px 8px"),
+          textsize = "13px",
+          direction = "auto"
+      ) )|> 
+      addLegend(
+        pal = pal, 
+        values = ~Inversión, 
+        opacity = 0.7, 
+        title = "Inversión",
+        position = "bottomright",
+        labFormat = labelFormat(
+          big.mark = ".",
+        ),
+        na.label = "Por Definir"
+      )
+    
+  })
   
   
   
@@ -825,8 +1140,12 @@ server <- function(input, output, session) {
     
     if (region_seleccionada() == "METROPOLITANA") {
       tab_resumen <- tab_resumen_RM %>%
+        mutate(Inversión = case_when(NombreComuna == "CALERA DE TANGO" ~ 0,
+                                     NombreComuna == "PIRQUE" ~ 0,
+                                     TRUE ~ Inversión)) |> 
+        select(-c(`Código`))|> 
         mutate(
-          `Población 2017` = scales::comma(`Población 2017`, big.mark = ".", decimal.mark = ","),
+          `Población 2024` = scales::comma(`Población 2024`, big.mark = ".", decimal.mark = ","),
           `Población 2025` = scales::comma(`Población 2025`, big.mark = ".", decimal.mark = ","),
           Monto2025 = ifelse(is.na(Monto2025), "Por definir", scales::comma(Monto2025, big.mark = ".", decimal.mark = ","))
         ) |> 
@@ -844,17 +1163,21 @@ server <- function(input, output, session) {
           NombreComuna == "SAN RAMON" ~ "SAN RAMÓN",
           TRUE ~ NombreComuna
         )) |> 
-        rename(
+        dplyr::rename(
+          `Crec/Decrec relativo de población 2024 al 2025 (%)` = `Crec/Decrec relativo de población 2024 al 2025`,
           `Inversión` = `Monto2025`,
           `Población 2025 (*)` = `Población 2025`,
           `Comuna` = `NombreComuna`,
           `Pobreza multidimensional (**)` = `Pobreza Multidimensional`,
-        )
+        ) 
     } else if (region_seleccionada() == "BIOBÍO") {
-      tab_resumen <- tab_resumen_BIOBIO  |> 
+      tab_resumen <- tab_resumen_BIOBIO |> 
+        mutate(Inversión = case_when(NombreComuna  == "SAN ROSENDO" ~ 0,
+                                     TRUE ~ Inversión)) |> 
+        select(-c(`Código`))|> 
         mutate(
           Monto2025 = if_else(NombreComuna == "PICA", NA_real_, Monto2025),
-          `Población 2017` = scales::comma(`Población 2017`, big.mark = ".", decimal.mark = ","),
+          `Población 2024` = scales::comma(`Población 2024`, big.mark = ".", decimal.mark = ","),
           `Población 2025` = scales::comma(`Población 2025`, big.mark = ".", decimal.mark = ","),
           Monto2025 = ifelse(is.na(Monto2025), "Por definir", scales::comma(Monto2025, big.mark = ".", decimal.mark = ","))
         ) |> 
@@ -870,17 +1193,20 @@ server <- function(input, output, session) {
           NombreComuna == "TOME" ~ "TOMÉ",
           TRUE ~ NombreComuna
         )) |> 
-        rename(
-          `Inversión` = `Monto2025`,
+        dplyr::rename(
+          Inversión = Monto2025,
           `Población 2025 (*)` = `Población 2025`,
-          `Comuna` = `NombreComuna`,
+          Comuna = NombreComuna,
           `Pobreza multidimensional (**)` = `Pobreza Multidimensional`,
-        )
+          `Crec/Decrec relativo de población 2024 al 2025 (%)` = `Crec/Decrec relativo de población 2024 al 2025`
+        ) 
+      
     } else {
       tab_resumen <- tab_resumen  |> 
+        select(-c(`Código`))|> 
         mutate(
           Monto2025 = if_else(NombreComuna == "PICA", NA_real_, Monto2025),
-          `Población 2017` = scales::comma(`Población 2017`, big.mark = ".", decimal.mark = ","),
+          `Población 2024` = scales::comma(`Población 2024`, big.mark = ".", decimal.mark = ","),
           `Población 2025` = scales::comma(`Población 2025`, big.mark = ".", decimal.mark = ","),
           Monto2025 = ifelse(is.na(Monto2025), "Por definir", scales::comma(Monto2025, big.mark = ".", decimal.mark = ","))
         )  |> 
@@ -922,18 +1248,21 @@ server <- function(input, output, session) {
                                         NombreComuna == "PUQUELDON" ~ "PUQUELDÓN",
                                         NombreComuna == "QUEILEN" ~ "QUEILÉN",
                                         NombreComuna == "QUELLON" ~ "QUELLÓN",
-                                        NombreComuna == "RIO NEGRO" ~ "RÍO NEGRO",NombreComuna == "AYSEN" ~ "AYSÉN",
+                                        NombreComuna == "RIO NEGRO" ~ "RÍO NEGRO",
+                                        NombreComuna == "AYSEN" ~ "AYSÉN",
+                                        NombreComuna == "COCHAMO" ~ "COCHAMÓ",
                                         NombreComuna == "RIO IBAÑEZ" ~ "RÍO IBAÑEZ",
                                         NombreComuna == "ANTARTICA" ~ "ANTÁRTICA",
                                         NombreComuna == "RIO VERDE" ~ "RÍO VERDE", TRUE ~ NombreComuna
         )) |> 
         
-        rename(
+        dplyr::rename(
+          `Crec/Decrec relativo de población 2024 al 2025 (%)` = `Crec/Decrec relativo de población 2024 al 2025` ,
           `Inversión` = `Monto2025`,
           `Población 2025 (*)` = `Población 2025`,
           `Comuna` = `NombreComuna`,
           `Pobreza multidimensional (**)` = `Pobreza Multidimensional`,
-        )
+        ) 
     }
     
     tab_resumen  |>   
@@ -1182,15 +1511,16 @@ server <- function(input, output, session) {
   output$tabla_nacional <- renderDT({
     tab_resumen_nac %>%
       mutate(
-        `Población 2017` = scales::comma(as.numeric(`Población 2017`), big.mark = ".", decimal.mark = ","),
+        `Población 2024` = scales::comma(as.numeric(`Población 2024`), big.mark = ".", decimal.mark = ","),
         `Población 2025` = scales::comma(as.numeric(`Población 2025`), big.mark = ".", decimal.mark = ","),
         Monto2025 = scales::comma(as.numeric(Monto2025), big.mark = ".", decimal.mark = ","),
         `Pobreza Multidimensional` = replace_na(`Pobreza Multidimensional`, "12.472")
       ) %>%
-      rename(`Región` = `RegionAB`,
+      dplyr::rename(`Región` = `RegionAB`,
              `Pobreza Multidimensional (**)` = `Pobreza Multidimensional`,
              `Población 2025 (*)` = `Población 2025`,
-             `Inversión` = `Monto2025`
+             `Inversión` = `Monto2025`,
+             `Crec/Decrec relativo de población 2024 al 2025 (%)` = `Crec/Decrec relativo de población 2024 al 2025`
       ) %>%  
       datatable(
         options = list(
